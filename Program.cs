@@ -266,7 +266,7 @@ namespace read_journal
 
             string linesPath = baseOutPath.Replace(".jpg", "_lines.jpg");
             using var w = new SKFileWStream(linesPath);
-            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 100);
+            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 50);
             Console.WriteLine($"  Lines image saved to {linesPath}");
         }
 
@@ -296,7 +296,7 @@ namespace read_journal
 
             string wordsPath = baseOutPath.Replace(".jpg", "_words.jpg");
             using var w = new SKFileWStream(wordsPath);
-            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 100);
+            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 50);
             Console.WriteLine($"  Words image saved to {wordsPath}");
         }
 
