@@ -157,6 +157,18 @@ namespace read_journal
                     Console.WriteLine("Recognized Text:");
                     foreach (var line in result.Read.Blocks.SelectMany(b => b.Lines))
                         Console.WriteLine($"  {line.Text}");
+                    // Word-by-word confidences
+                    Console.WriteLine("\nWord confidences:");
+                    foreach (var word in result.Read.Blocks
+                                                .SelectMany(b => b.Lines)
+                                                .SelectMany(l => l.Words))
+                    {
+                        Console.WriteLine($"  {word.Text} (Confidence: {word.Confidence:P2})");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No text recognized.");
                 }
 
                 // Annotate & save two images per region
