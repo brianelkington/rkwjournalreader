@@ -1,11 +1,12 @@
 # Azure Journal Reader Infrastructure
 
-This Terraform configuration deploys the Azure infrastructure for the Journal Reader application.
+This Terraform configuration provisions Azure resources for the Journal Reader application.
 
 ## Resources Created
 
 - **Resource Group**: `rg-rkwjournalreader`
-- **Storage Account**: `sarkwreader`
+- **Storage Account**: `sarkwreader1`
+  - **Blob Container**: `rkw-text-out`
 - **User Assigned Managed Identity**: `id-rkw`
 - **Azure Cognitive Services (Computer Vision)**: `ai-rkw-vision`
 - **Azure Key Vault**: `kv-rkw`
@@ -18,12 +19,12 @@ This Terraform configuration deploys the Azure infrastructure for the Journal Re
 
 ## Usage
 
-1. **Clone this repo and navigate to the `iac/` directory:**
+1. **Navigate to the `iac/` directory:**
    ```sh
    cd iac
    ```
 
-2. **Set your Azure subscription ID in `terraform.tfvars`:**
+2. **Set your Azure subscription ID in [`terraform.tfvars`](iac/terraform.tfvars`):**
    ```hcl
    subscription_id = "<your-subscription-id>"
    ```
@@ -51,7 +52,8 @@ This Terraform configuration deploys the Azure infrastructure for the Journal Re
 
 ## File Structure
 
-- [`main.tf`](iac/main.tf): Resource group, storage account, managed identity
+- [`main.tf`](iac/main.tf): Resource group, managed identity
+- [`storage.tf`](iac/storage.tf): Storage account and blob container
 - [`cognitiveservice.tf`](iac/cognitiveservice.tf): Cognitive Services resource
 - [`keyvault.tf`](iac/keyvault.tf): Key Vault and secrets
 - [`providers.tf`](iac/providers.tf): Azure provider configuration
@@ -60,11 +62,11 @@ This Terraform configuration deploys the Azure infrastructure for the Journal Re
 
 ## Notes
 
-- The storage account is created with locally redundant storage (LRS).
+- The storage account uses locally redundant storage (LRS).
 - The managed identity can be used for secure access to Azure resources.
 - Key Vault access policies are set for both the current user and the managed identity.
 
 ---
 
 **See also:**  
-- [Terraform documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+- [Terraform Azurerm Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
