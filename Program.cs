@@ -63,6 +63,10 @@ namespace read_journal
             var outputBase = Path.Combine(inputFolder, OutputFolder);
             Directory.CreateDirectory(outputBase);
 
+            // Open the aggregator log
+            var aggPath = Path.Combine(outputBase, "aggregator.txt");
+            using var aggregatorWriter = new StreamWriter(aggPath, append: false) { AutoFlush = true };
+
             // Overall metrics
             double captionSum = 0;
             int captionCount = 0;
@@ -70,7 +74,7 @@ namespace read_journal
 
             // Process each image file
             foreach (var imagePath in images)
-                ProcessImageFile(imagePath, client, outputBase, saveImages, verbose, ref captionSum, ref captionCount);
+                ProcessImageFile(imagePath, client, outputBase, saveImages, verbose, ref captionSum, ref captionCount, aggregatorWriter);
 
             overallSw.Stop();
             Console.WriteLine($"\nProcessed {captionCount} pages with captions. " +
@@ -85,7 +89,8 @@ namespace read_journal
             bool saveImages,
             bool verbose,
             ref double captionSum,
-            ref int captionCount)
+            ref int captionCount,
+            StreamWriter aggregatorWriter)
         {
             // Load and auto-rotate according to EXIF
             using var full = LoadAndOrientImage(imagePath);
@@ -106,7 +111,7 @@ namespace read_journal
                 full.ExtractSubset(bmp, reg.Rect);
 
                 var pageName = baseName + reg.Suffix;
-                ProcessRegion(bmp, client, outputBase, baseName + reg.Suffix, saveImages, verbose, ref captionSum, ref captionCount);
+                ProcessRegion(bmp, client, outputBase, baseName + reg.Suffix, saveImages, verbose, ref captionSum, ref captionCount, aggregatorWriter);
             }
         }
 
@@ -118,16 +123,24 @@ namespace read_journal
             bool saveImages,
             bool verbose,
             ref double captionSum,
-            ref int captionCount)
+            ref int captionCount,
+            StreamWriter aggregatorWriter)
         {
             // Setup per-page logging (console ➔ .txt file)
             var origOut = Console.Out;
             var origErr = Console.Error;
             var logPath = Path.Combine(outputBase, $"{pageName}.txt");
             using var logWriter = new StreamWriter(logPath, false) { AutoFlush = true };
-            var tee = new LogWriter(origOut, logWriter);
-            Console.SetOut(tee);
-            Console.SetError(tee);
+
+            // Chain console → aggregator
+            var consolePlusAgg = new LogWriter(origOut, aggregatorWriter);
+            var allOut = new LogWriter(consolePlusAgg, logWriter);
+            Console.SetOut(allOut);
+
+            // Chain error → aggregator
+            var errorPlusAgg = new LogWriter(origErr, aggregatorWriter);
+            var allErr = new LogWriter(errorPlusAgg, logWriter);
+            Console.SetError(allErr);
 
             if (verbose)
             {
@@ -166,7 +179,7 @@ namespace read_journal
                 // Full text (if there is any)
                 if (result.Read != null)
                 {
-                    Console.WriteLine("Recognized Text:");
+                    Console.WriteLine("---------- Recognized Text: ----------");
                     foreach (var line in result.Read.Blocks.SelectMany(b => b.Lines))
                         Console.WriteLine($"  {line.Text}");
                     if (verbose)
