@@ -6,13 +6,6 @@ resource "azurerm_storage_account" "rkw" {
   account_replication_type = "LRS"
 
   tags = local.tags
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      tags,
-    ]
-  }
 }
 
 resource "azurerm_storage_container" "rkw" {

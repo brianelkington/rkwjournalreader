@@ -2,8 +2,13 @@ resource "azurerm_resource_group" "rkw" {
   name     = "rg-rkwjournalreader"
   location = "westus2"
 
-  # tags     = merge(local.tags, { createdOn = formatdate("YYYY-MM-DD HH:mm:ss ZZZ", timestamp()) })
-  tags = local.tags
+  tags     = merge(local.tags, { createdOn = formatdate("YYYY-MM-DD HH:mm:ss ZZZ", timestamp()) })
+
+  lifecycle {
+    ignore_changes = [
+      tags,
+    ]
+  }
 }
 
 resource "azurerm_user_assigned_identity" "rkw" {
