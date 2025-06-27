@@ -272,28 +272,32 @@ namespace read_journal
                 IsAntialias = true
             };
 
-            // Draw lines
-            if (drawLines && readResult != null)
+            if (verbose)
             {
-                foreach (var ln in readResult.Blocks.SelectMany(b => b.Lines))
+                // Draw lines
+                if (drawLines && readResult != null)
                 {
-                    var skPoints = ln.BoundingPolygon
-                        .Select(p => new SKPoint((float)p.X, (float)p.Y))
-                        .ToArray();
-                    DrawPolygon(canvas, skPoints, paint);
+                    foreach (var ln in readResult.Blocks.SelectMany(b => b.Lines))
+                    {
+                        var skPoints = ln.BoundingPolygon
+                            .Select(p => new SKPoint((float)p.X, (float)p.Y))
+                            .ToArray();
+                        DrawPolygon(canvas, skPoints, paint);
+                    }
                 }
-            }
 
-            // Draw words
-            if (drawWords && readResult != null)
-            {
-                foreach (var wd in readResult.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
+                // Draw words
+                if (drawWords && readResult != null)
                 {
-                    var skPoints = wd.BoundingPolygon
-                        .Select(p => new SKPoint((float)p.X, (float)p.Y))
-                        .ToArray();
-                    DrawPolygon(canvas, skPoints, paint);
+                    foreach (var wd in readResult.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
+                    {
+                        var skPoints = wd.BoundingPolygon
+                            .Select(p => new SKPoint((float)p.X, (float)p.Y))
+                            .ToArray();
+                        DrawPolygon(canvas, skPoints, paint);
+                    }
                 }
+                Console.WriteLine($"Annotated {Path.GetFileName(outputPath)} with {readResult?.Blocks.Count ?? 0} blocks.");
             }
 
             // Save JPEG
