@@ -117,10 +117,10 @@ namespace read_journal
             ref double captionSum,
             ref int captionCount)
         {
-            // Setup per-page logging (console ➔ .out file)
+            // Setup per-page logging (console ➔ .txt file)
             var origOut = Console.Out;
             var origErr = Console.Error;
-            var logPath = Path.Combine(outputBase, $"{pageName}.out");
+            var logPath = Path.Combine(outputBase, $"{pageName}.txt");
             using var logWriter = new StreamWriter(logPath, false) { AutoFlush = true };
             var tee = new LogWriter(origOut, logWriter);
             Console.SetOut(tee);
@@ -174,8 +174,8 @@ namespace read_journal
                 // Annotate & save two images per region
                 if (saveImages)
                 {
-                    var linesOut = Path.Combine(outputBase, $"{pageName}_lines.jpg");
-                    AnnotateAndSave(bitmap, result.Read, linesOut, drawLines: true, drawWords: false);
+                    // var linesOut = Path.Combine(outputBase, $"{pageName}_lines.jpg");
+                    // AnnotateAndSave(bitmap, result.Read, linesOut, drawLines: true, drawWords: false);
 
                     var wordsOut = Path.Combine(outputBase, $"{pageName}_words.jpg");
                     AnnotateAndSave(bitmap, result.Read, wordsOut, drawLines: false, drawWords: true);
