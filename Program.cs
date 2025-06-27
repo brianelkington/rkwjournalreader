@@ -11,305 +11,262 @@ namespace read_journal
 {
     class Program
     {
+        private const int BinderWidth      = 0;  // pixels to skip for the spiral binder
+        private const int JpegQuality      = 50; // output JPEG quality (0-100)
+        private const string DefaultFolder = @".\images";
+        private const string OutputFolder  = "image_out";
+        private static readonly VisualFeatures VisionFeatures =
+            VisualFeatures.Read | VisualFeatures.Caption | VisualFeatures.DenseCaptions;
+
         static void Main(string[] args)
         {
-            // Accumulators for caption confidence
-            double totalCaptionConfidence = 0;
-            int captionCount = 0;
+            // --- Parse args ---
+            bool saveImages = args.Any(a => a.Equals("--save-images", StringComparison.OrdinalIgnoreCase));
+            string inputFolder = args
+                .FirstOrDefault(a => !a.StartsWith("--")) 
+                ?? DefaultFolder;
 
-            // Preserve original console output
-            var originalOut = Console.Out;
-            var originalErr = Console.Error;
+            if (!Directory.Exists(inputFolder))
+            {
+                Console.Error.WriteLine($"Image folder not found: {inputFolder}");
+                return;
+            }
+
+            var cfg = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build();
+            var endpoint = cfg["AIServicesEndpoint"];
+            var key      = cfg["AIServicesKey"];
+            if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(key))
+            {
+                Console.Error.WriteLine("Missing AIServicesEndpoint or AIServicesKey in appsettings.json");
+                return;
+            }
+
+            // Init Vision client
+            var client = new ImageAnalysisClient(new Uri(endpoint), new AzureKeyCredential(key));
+
+            // Enumerate JPEG files
+            var images = Directory
+                .EnumerateFiles(inputFolder, "*.*", SearchOption.TopDirectoryOnly)
+                .Where(f => new[] { ".jpg", ".jpeg" }
+                    .Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .ToList();
+            if (!images.Any())
+            {
+                Console.WriteLine("No JPEG images found; exiting.");
+                return;
+            }
+
+            // Prepare output directory
+            var outputBase = Path.Combine(inputFolder, OutputFolder);
+            Directory.CreateDirectory(outputBase);
+
+            // Overall metrics
+            double captionSum = 0;
+            int    captionCount = 0;
+            var overallSw = Stopwatch.StartNew();
+
+            // Process each image file
+            foreach (var imagePath in images)
+                ProcessImageFile(imagePath, client, outputBase, saveImages, ref captionSum, ref captionCount);
+
+            overallSw.Stop();
+            Console.WriteLine($"\nProcessed {captionCount} pages with captions. " +
+                              $"Avg confidence: {(captionCount>0?captionSum/captionCount:0):P2}");
+            Console.WriteLine($"Total processing time: {overallSw.Elapsed:c}");
+        }
+
+        static void ProcessImageFile(
+            string imagePath,
+            ImageAnalysisClient client,
+            string outputBase,
+            bool   saveImages,
+            ref double captionSum,
+            ref int captionCount)
+        {
+            // Load and auto-rotate according to EXIF
+            using var full = LoadAndOrientImage(imagePath);
+            int W = full.Width, H = full.Height;
+            int half = (W - BinderWidth) / 2;
+
+            // Define left/right crop regions
+            var regions = new[]
+            {
+                (Suffix: "_L", Rect: new SKRectI(0,              0, half,           H)),
+                (Suffix: "_R", Rect: new SKRectI(half + BinderWidth, 0, W,           H))
+            };
+
+            var baseName = Path.GetFileNameWithoutExtension(imagePath);
+            foreach (var reg in regions)
+            {
+                using var bmp = new SKBitmap(reg.Rect.Width, reg.Rect.Height);
+                full.ExtractSubset(bmp, reg.Rect);
+
+                var pageName = baseName + reg.Suffix;
+                ProcessRegion(bmp, client, outputBase, baseName + reg.Suffix, saveImages, ref captionSum, ref captionCount);
+            }
+        }
+
+        static void ProcessRegion(
+            SKBitmap bitmap,
+            ImageAnalysisClient client,
+            string outputBase,
+            string pageName,
+            bool        saveImages,
+            ref double captionSum,
+            ref int captionCount)
+        {
+            // Setup per-page logging (console ➔ .out file)
+            var origOut = Console.Out;
+            var origErr = Console.Error;
+            var logPath = Path.Combine(outputBase, $"{pageName}.out");
+            using var logWriter = new StreamWriter(logPath, false) { AutoFlush = true };
+            var tee = new LogWriter(origOut, logWriter);
+            Console.SetOut(tee);
+            Console.SetError(tee);
+
+            Console.WriteLine($"\n--- Processing {pageName} ---");
+            var sw = Stopwatch.StartNew();
 
             try
             {
-                Console.WriteLine($"Run started at {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
+                // Encode to JPEG in memory and call Vision
+                using var imgData = SKImage
+                    .FromBitmap(bitmap)
+                    .Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
+                using var ms = new MemoryStream(imgData.ToArray());
+                ImageAnalysisResult result = client.Analyze(BinaryData.FromStream(ms), VisionFeatures);
 
-                // Load configuration
-                IConfigurationRoot configuration = new ConfigurationBuilder()
-                    .AddJsonFile("appsettings.json")
-                    .Build();
-                string aiSvcEndpoint = configuration["AIServicesEndpoint"];
-                string aiSvcKey = configuration["AIServicesKey"];
-
-                // Determine base path for images
-                string basePath = args.Length > 0
-                    ? args[0]
-                    : @"..\..\..\images";
-
-                if (!Directory.Exists(basePath))
+                // Caption & stats
+                if (!string.IsNullOrEmpty(result.Caption?.Text))
                 {
-                    Console.Error.WriteLine($"ERROR: folder not found: {basePath}");
-                    return;
+                    Console.WriteLine($"Caption: \"{result.Caption.Text}\" (Conf: {result.Caption.Confidence:P2})");
+                    captionSum += result.Caption.Confidence;
+                    captionCount++;
                 }
 
-                // Create Vision client
-                var client = new ImageAnalysisClient(
-                    new Uri(aiSvcEndpoint),
-                    new AzureKeyCredential(aiSvcKey));
+                // Dense captions
+                Console.WriteLine("Dense Captions:");
+                foreach (var dc in result.DenseCaptions.Values)
+                    Console.WriteLine($"  {dc.Text} (Conf: {dc.Confidence:P2})");
 
-                Console.WriteLine("Initialized Azure AI Vision client.\n");
-
-                // Enumerate JPEG files
-                var imageFiles = Directory
-                    .EnumerateFiles(basePath, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f =>
-                    {
-                        var ext = Path.GetExtension(f);
-                        return ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-                            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .ToList();
-
-                if (!imageFiles.Any())
+                // Full text
+                if (result.Read != null)
                 {
-                    Console.WriteLine("No JPEG images found in folder.");
-                    return;
+                    Console.WriteLine("Recognized Text:");
+                    foreach (var line in result.Read.Blocks.SelectMany(b => b.Lines))
+                        Console.WriteLine($"  {line.Text}");
                 }
 
-                var totalSw = Stopwatch.StartNew();
-
-                foreach (var imageFile in imageFiles)
+                // Annotate & save two images per region
+                if (saveImages)
                 {
-                    string name = Path.GetFileNameWithoutExtension(imageFile);
-                    var sw = Stopwatch.StartNew();
-                    Console.WriteLine($"\n--- Processing {name} ---\n");
+                    var linesOut = Path.Combine(outputBase, $"{pageName}_lines.jpg");
+                    AnnotateAndSave(bitmap, result.Read, linesOut, drawLines: true, drawWords: false);
 
-                    try
-                    {
-                        // Load and correct EXIF orientation
-                        using var codec = SKCodec.Create(imageFile)
-                            ?? throw new InvalidOperationException($"Couldn't open {imageFile}");
-                        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height);
-                        using var raw = new SKBitmap(info);
-                        codec.GetPixels(info, raw.GetPixels());
-                        using var fullBitmap = raw.ApplyExifOrientation(codec.EncodedOrigin);
-
-                        int W = fullBitmap.Width;
-                        int H = fullBitmap.Height;
-                        int binderWidth = 0;
-                        int halfWidth = (W - binderWidth) / 2;
-
-                        // Split into left/right
-                        var leftRect = new SKRectI(0, 0, halfWidth, H);
-                        var rightRect = new SKRectI(halfWidth + binderWidth, 0, W, H);
-                        var leftBmp = new SKBitmap(halfWidth, H);
-                        var rightBmp = new SKBitmap(halfWidth, H);
-                        fullBitmap.ExtractSubset(leftBmp, leftRect);
-                        fullBitmap.ExtractSubset(rightBmp, rightRect);
-
-                        // Process each side
-                        ProcessPage(leftBmp, imageFile, "L", client, ref totalCaptionConfidence, ref captionCount, originalOut, originalErr);
-                        ProcessPage(rightBmp, imageFile, "R", client, ref totalCaptionConfidence, ref captionCount, originalOut, originalErr);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"Error processing {imageFile}: {ex.Message}");
-                    }
-                    finally
-                    {
-                        sw.Stop();
-                        Console.WriteLine($"\nTime for {name}: {sw.Elapsed:c}\n");
-
-                        // Restore console output
-                        Console.SetOut(originalOut);
-                        Console.SetError(originalErr);
-                    }
+                    var wordsOut = Path.Combine(outputBase, $"{pageName}_words.jpg");
+                    AnnotateAndSave(bitmap, result.Read, wordsOut, drawLines: false, drawWords: true);
                 }
-
-                totalSw.Stop();
-
-                // Aggregate caption confidence
-                if (captionCount > 0)
-                {
-                    double avg = totalCaptionConfidence / captionCount;
-                    Console.WriteLine($"Processed {captionCount} pages with captions. Average caption confidence: {avg:P2}");
-                }
-                else
-                {
-                    Console.WriteLine("No captions found on any page.");
-                }
-
-                Console.WriteLine($"\nAll pages done. Total time: {totalSw.Elapsed:c}");
-                Console.WriteLine($"Run finished at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Fatal error: {ex.Message}");
+                Console.Error.WriteLine($"Error in {pageName}: {ex.Message}");
+            }
+            finally
+            {
+                sw.Stop();
+                Console.WriteLine($"Completed {pageName} in {sw.Elapsed:c}");
+                // Restore console
+                Console.SetOut(origOut);
+                Console.SetError(origErr);
             }
         }
 
-    static void ProcessPage(
-        SKBitmap pageBitmap,
-        string originalPath,
-        string side,
-        ImageAnalysisClient client,
-        ref double totalCaptionConfidence,
-        ref int captionCount,
-        TextWriter originalOut,
-        TextWriter originalErr)
-    {
-        string dir    = Path.GetDirectoryName(originalPath)!;
-        string name   = Path.GetFileNameWithoutExtension(originalPath);
-        string suffix = $"_{side}";
-
-        // Setup per-page logging
-        string outDir   = Path.Combine(dir, "image_out");
-        string logFile  = Path.Combine(outDir, $"{name}{suffix}.out");
-        using var logWriter = new StreamWriter(logFile, append: false) { AutoFlush = true };
-        var tee = new LogWriter(originalOut, logWriter);
-        Console.SetOut(tee);
-        Console.SetError(tee);
-
-        try
+        static SKBitmap LoadAndOrientImage(string path)
         {
-            // Encode the page into a MemoryStream
-            using var img  = SKImage.FromBitmap(pageBitmap);
-            using var data = img.Encode(SKEncodedImageFormat.Jpeg, 100);
-            using var ms   = new MemoryStream(data.ToArray());
+            // Load the JPEG & read EXIF
+            using var codec = SKCodec.Create(path)
+                ?? throw new InvalidOperationException($"Cannot open {path}");
 
-            Console.WriteLine($"\n--- Analysis for {name}{suffix} ---");
-            ImageAnalysisResult result = client.Analyze(
-                BinaryData.FromStream(ms),
-                VisualFeatures.Read | VisualFeatures.Caption | VisualFeatures.DenseCaptions
-            );
-            
-            // Caption
-            if (!string.IsNullOrEmpty(result.Caption?.Text))
-            {
-                Console.WriteLine("Caption:");
-                Console.WriteLine($"  \"{result.Caption.Text}\" (Confidence: {result.Caption.Confidence:0.00})\n");
+            var info = new SKImageInfo(codec.Info.Width, codec.Info.Height);
 
-                totalCaptionConfidence += result.Caption.Confidence;
-                captionCount++;
+            // Allocate raw bitmap (do NOT dispose it here)
+            var raw = new SKBitmap(info);
+            codec.GetPixels(info, raw.GetPixels());
+
+            // Apply orientation – this may return 'raw' or a new bitmap
+            var oriented = raw.ApplyExifOrientation(codec.EncodedOrigin);
+
+            // If we got back a *different* SKBitmap, dispose the old one
+            if (!ReferenceEquals(oriented, raw))
+            { 
+               raw.Dispose();
             }
 
-            // Dense captions
-            Console.WriteLine("Dense Captions:");
-            foreach (var dc in result.DenseCaptions.Values)
-            {
-                Console.WriteLine($"  \"{dc.Text}\" (Confidence: {dc.Confidence:0.00})");
-            }
-            Console.WriteLine();
-
-            // Full text
-            if (result.Read != null)
-            {
-                Console.WriteLine("Full Text:");
-                foreach (var line in result.Read.Blocks.SelectMany(b => b.Lines))
-                {
-                    Console.WriteLine($"  {line.Text}");
-                }
-                Console.WriteLine();
-
-                Console.WriteLine("Individual Words:");
-                foreach (var word in result.Read.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
-                {
-                    Console.WriteLine($"  {word.Text} (Confidence: {word.Confidence:P2})");
-                }
-                Console.WriteLine();
-            }
-
-            Console.WriteLine("Analysis complete.\n");
-
-            // Annotate results
-            string baseOut = Path.Combine(outDir, $"{name}{suffix}.jpg");
-            AnnotateLines(pageBitmap, result.Read, baseOut);
-            AnnotateWords(pageBitmap, result.Read, baseOut);
-
-            // Track caption confidence
-            if (!string.IsNullOrEmpty(result.Caption?.Text))
-            {
-                Console.WriteLine($"Caption Confidence for {name}{suffix}: {result.Caption.Confidence:0.00}");
-                totalCaptionConfidence += result.Caption.Confidence;
-                captionCount++;
-            }
-
-            Console.WriteLine(
-                $"Saved annotated images: {Path.Combine(outDir, name + suffix + "_lines.jpg")} and {Path.Combine(outDir, name + suffix + "_words.jpg")}"
-            );
+            // Return the correctly-oriented bitmap (still alive)
+            return oriented;
         }
-        catch (Exception ex)
+
+        static void AnnotateAndSave(
+            SKBitmap src,
+            ReadResult readResult,
+            string outputPath,
+            bool drawLines,
+            bool drawWords)
         {
-            Console.Error.WriteLine($"Error analyzing {name}{suffix}: {ex.Message}");
-        }
-        finally
-        {
-            // Restore original console output
-            Console.SetOut(originalOut);
-            Console.SetError(originalErr);
-        }
-    }
-        static void AnnotateLines(SKBitmap bitmap, ReadResult readResult, string baseOutPath)
-        {
-            using var canvas = new SKCanvas(bitmap);
+            // Create a fresh bitmap and draw the source
+            using var bmp = new SKBitmap(src.Info);
+            using var canvas = new SKCanvas(bmp);
+            canvas.DrawBitmap(src, 0, 0);
+
+            // Outline paint
             using var paint = new SKPaint
             {
-                Color = SKColors.Cyan,
+                Color       = SKColors.Cyan,
                 StrokeWidth = 3,
-                Style = SKPaintStyle.Stroke,
+                Style       = SKPaintStyle.Stroke,
                 IsAntialias = true
             };
 
-            foreach (var line in readResult.Blocks.SelectMany(b => b.Lines))
+            // Draw lines
+            if (drawLines && readResult != null)
             {
-                var pts = line.BoundingPolygon;
-                var poly = new[]
+                foreach (var ln in readResult.Blocks.SelectMany(b => b.Lines))
                 {
-                    new SKPoint(pts[0].X, pts[0].Y),
-                    new SKPoint(pts[1].X, pts[1].Y),
-                    new SKPoint(pts[2].X, pts[2].Y),
-                    new SKPoint(pts[3].X, pts[3].Y)
-                };
-                DrawPolygon(canvas, poly, paint);
+                    var skPoints = ln.BoundingPolygon
+                        .Select(p => new SKPoint((float)p.X, (float)p.Y))
+                        .ToArray();
+                    DrawPolygon(canvas, skPoints, paint);
+                }
             }
 
-            string linesPath = baseOutPath.Replace(".jpg", "_lines.jpg");
-            using var w = new SKFileWStream(linesPath);
-            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 50);
-            Console.WriteLine($"  Lines image saved to {linesPath}");
+            // Draw words
+            if (drawWords && readResult != null)
+            {
+                foreach (var wd in readResult.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
+                {
+                    var skPoints = wd.BoundingPolygon
+                        .Select(p => new SKPoint((float)p.X, (float)p.Y))
+                        .ToArray();
+                    DrawPolygon(canvas, skPoints, paint);
+                }
+            }
+
+            // Save JPEG
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            using var stream = new SKFileWStream(outputPath);
+            bmp.Encode(stream, SKEncodedImageFormat.Jpeg, JpegQuality);
+            Console.WriteLine($"Saved {Path.GetFileName(outputPath)}");
         }
 
-        static void AnnotateWords(SKBitmap bitmap, ReadResult readResult, string baseOutPath)
+        static void DrawPolygon(SKCanvas canvas, SKPoint[] pts, SKPaint paint)
         {
-            using var canvas = new SKCanvas(bitmap);
-            using var paint = new SKPaint
-            {
-                Color = SKColors.Cyan,
-                StrokeWidth = 3,
-                Style = SKPaintStyle.Stroke,
-                IsAntialias = true
-            };
-
-            foreach (var word in readResult.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
-            {
-                var pts = word.BoundingPolygon;
-                var poly = new[]
-                {
-                    new SKPoint(pts[0].X, pts[0].Y),
-                    new SKPoint(pts[1].X, pts[1].Y),
-                    new SKPoint(pts[2].X, pts[2].Y),
-                    new SKPoint(pts[3].X, pts[3].Y)
-                };
-                DrawPolygon(canvas, poly, paint);
-            }
-
-            string wordsPath = baseOutPath.Replace(".jpg", "_words.jpg");
-            using var w = new SKFileWStream(wordsPath);
-            bitmap.Encode(w, SKEncodedImageFormat.Jpeg, 50);
-            Console.WriteLine($"  Words image saved to {wordsPath}");
-        }
-
-        static void DrawPolygon(SKCanvas canvas, SKPoint[] poly, SKPaint paint)
-        {
-            for (int i = 0; i < poly.Length; i++)
-            {
-                var start = poly[i];
-                var end = poly[(i + 1) % poly.Length];
-                canvas.DrawLine(start, end, paint);
-            }
+            using var path = new SKPath();
+            path.MoveTo(pts[0]);
+            for (int i = 1; i < pts.Length; i++) path.LineTo(pts[i]);
+            path.Close();
+            canvas.DrawPath(path, paint);
         }
     }
 }
-
-

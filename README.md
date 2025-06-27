@@ -20,10 +20,13 @@ A .NET console application that automates reading and annotating text from scann
 
 ## Prerequisites
 
-- [.NET 6.0 SDK or later](https://dotnet.microsoft.com/download)
-- Valid Azure AI Vision resource with endpoint and key
-- **appsettings.json** in the application folder (see below)
-
+1. **.NET 6.0 SDK** (or later)  
+2. **appsettings.json** in the working directory, containing:
+   ```json
+   {
+     "AIServicesEndpoint": "<your-vision-endpoint-uri>",
+     "AIServicesKey": "<your-vision-api-key>"
+   }
 ---
 
 ## Installation
@@ -60,7 +63,7 @@ Create an **appsettings.json** alongside `Program.cs` with the following structu
 Run the application against a folder of scans:
 
 ```bash
-dotnet run --project src/Program.csproj -- "C:/Scans/"
+dotnet run -- [<image-folder>] [--save-images]
 ```
 
 - If no folder is provided, it defaults to the `images` folder included in the repository.
@@ -73,8 +76,8 @@ dotnet run --project src/Program.csproj -- "C:/Scans/"
 After running, you'll find an **image_out** folder next to each original image containing:
 
 - `<name>_L.jpg` and `<name>_R.jpg`: the left/right halves of the original scan
-- `<name>_L_lines.jpg`, `<name>_R_lines.jpg`: annotated line-bounding images
-- `<name>_L_words.jpg`, `<name>_R_words.jpg`: annotated word-bounding images
+- `<name>_L_lines.jpg`, `<name>_R_lines.jpg`: annotated line-bounding images (if --save-images)
+- `<name>_L_words.jpg`, `<name>_R_words.jpg`: annotated word-bounding images (if --save-images)
 - `<name>_L.out`, `<name>_R.out`: console logs with timing and caption details
 
 An overall summary (total time, average caption confidence) is printed to the console at the end.
@@ -84,22 +87,17 @@ An overall summary (total time, average caption confidence) is printed to the co
 ## Example
 
 ```bash
-> dotnet run -- "C:/Docs/ScanBatch"
-Run started at 2025-06-26 11:30:00
-Initialized Azure AI Vision client.
+# Process default 'images/' folder, generate only .out logs
+dotnet run
 
---- Processing scan1 ---
-...
-Time for scan1: 00:00:15.23
+# Process 'scans/' folder, generate only .out logs
+dotnet run -- scans
 
---- Processing scan2 ---
-...
-Time for scan2: 00:00:12.80
+# Process default folder AND save annotated JPEGs
+dotnet run -- --save-images
 
-Processed 4 pages with captions. Average caption confidence: 92.45%
-All pages done. Total time: 00:01:10.05
-Run finished at 2025-06-26 11:31:10
-```
+# Process 'scans/' AND save annotated JPEGs
+dotnet run -- scans --save-images
 
 ---
 
