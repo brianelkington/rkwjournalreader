@@ -1,0 +1,16 @@
+resource "azurerm_resource_group" "rkw" {
+  name     = "rg-rkwjournalreader"
+  location = "westus2"
+
+  # tags     = merge(local.tags, { createdOn = formatdate("YYYY-MM-DD HH:mm:ss ZZZ", timestamp()) })
+  tags = local.tags
+}
+
+resource "azurerm_user_assigned_identity" "rkw" {
+  name                = "id-rkw"
+  location            = azurerm_resource_group.rkw.location
+  resource_group_name = azurerm_resource_group.rkw.name
+
+  tags = local.tags
+}
+
