@@ -1,6 +1,6 @@
-# read_journal
+# rkwjournalreader
 
-A .NET console application that processes spiral-bound scanned images, splits each scan into left/right pages, runs Azure AI Vision OCR/caption analysis, and logs results per page. Optionally annotates and saves word‐bounding JPEGs.
+A .NET console application that processes scanned images, splits each scan into left/right pages, runs Azure AI Vision OCR/caption analysis, and logs results per page. Optionally annotates and saves word‐bounding JPEGs.
 
 ---
 
