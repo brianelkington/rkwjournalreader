@@ -3,10 +3,16 @@ variable "subscription_id" {
   sensitive = true
 }
 
+variable "location" {
+  type    = string
+  default = "westus"
+  
+}
+
 locals {
   tags = {
     cost-center = "rkw"
     environment = "dev"
-    team        = "briane"
+    team        = "team-ba"
   }
 }

@@ -9,3 +9,9 @@ resource "azurerm_cognitive_account" "rkw" {
 
   tags = local.tags
 }
+
+# import {
+#   id = "/subscriptions/${var.subscription_id}/resourceGroups/${azurerm_resource_group.rkw.name}/providers/Microsoft.CognitiveServices/accounts/ai-rkw-vision"
+#   to = azurerm_cognitive_account.rkw
+# }
+
