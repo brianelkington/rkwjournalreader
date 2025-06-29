@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./collect_jpgs.sh [root_dir] [output_json]
-#   root_dir:      directory to scan (default: .)
-#   output_json:   file to write JSON to (default: images.json)
+# Usage: ./collect_jpgs.sh [folder] [output_json]
+#   folder:       directory to scan (non‐recursive; default: .)
+#   output_json:  file to write JSON to (default: images.json)
 
-root_dir="${1:-.}"
+folder="${1:-.}"
 output_file="${2:-images.json}"
 
 # Start JSON array
 printf '[\n' > "$output_file"
 
 first=true
-# Find all .jpg/.JPG files under root_dir
+# Find only *.jpg files in the specified folder (no recursion)
 while IFS= read -r img; do
   # Add comma between entries
   if $first; then
@@ -26,9 +26,10 @@ while IFS= read -r img; do
 
   # Append JSON object
   printf '  {\n    "path": "%s",\n    "split": true\n  }' "$esc" >> "$output_file"
-done < <(find "$root_dir" -type f -iname '*.jpg')
+done < <(find "$folder" -maxdepth 1 -type f -iname '*.jpg')
 
 # Close JSON array
 printf '\n]\n' >> "$output_file"
 
-echo "Generated JSON with $(grep -c '"path"' "$output_file") entries in '$output_file'."
+count=$(grep -c '"path"' "$output_file" || echo 0)
+echo "Generated JSON with $count entries in '$output_file'."
