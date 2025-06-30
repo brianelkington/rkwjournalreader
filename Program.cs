@@ -13,7 +13,7 @@ using SkiaSharp;
 
 namespace read_journal
 {
-    // POCO for JSON input
+    // JSON input structure
     public class ImageEntry
     {
         [JsonPropertyName("path")]
@@ -225,15 +225,19 @@ namespace read_journal
                 // Caption
                 if (!string.IsNullOrEmpty(result.Caption?.Text))
                 {
-                    Console.WriteLine($"Caption: \"{result.Caption.Text}\" (Conf:{result.Caption.Confidence:P2})");
+                    if (verbose)
+                        Console.WriteLine($"Caption: \"{result.Caption.Text}\" (Conf:{result.Caption.Confidence:P2})");
                     captionSum += result.Caption.Confidence;
                     captionCount++;
                 }
 
                 // Dense captions
-                Console.WriteLine("Dense Captions:");
-                foreach (var dc in result.DenseCaptions.Values)
-                    Console.WriteLine($"  {dc.Text} (Conf:{dc.Confidence:P2})");
+                if (verbose)
+                {
+                    Console.WriteLine("Dense Captions:");
+                    foreach (var dc in result.DenseCaptions.Values)
+                        Console.WriteLine($"  {dc.Text} (Conf:{dc.Confidence:P2})");
+                }
 
                 // OCR text
                 if (result.Read != null)
@@ -242,9 +246,12 @@ namespace read_journal
                     foreach (var ln in result.Read.Blocks.SelectMany(b => b.Lines))
                         Console.WriteLine($"  {ln.Text}");
 
-                    Console.WriteLine("\nWord confidences:");
-                    foreach (var word in result.Read.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
-                        Console.WriteLine($"  {word.Text} (Conf:{word.Confidence:P2})");
+                    if (verbose)
+                    {
+                        Console.WriteLine("\nWord confidences:");
+                        foreach (var word in result.Read.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
+                            Console.WriteLine($"  {word.Text} (Conf:{word.Confidence:P2})");
+                    }
                 }
 
                 // Optional image output
@@ -254,11 +261,13 @@ namespace read_journal
                     // AnnotateAndSave(bmp, result.Read, linesOut, drawLines: true, drawWords: false);
 
                     var wordsOut = Path.Combine(outputBase, $"{pageName}_words.jpg");
-                    AnnotateAndSave(bmp, result.Read, wordsOut, drawLines: false, drawWords: true);
+                    if (verbose)
+                        AnnotateAndSave(bmp, result.Read, wordsOut, drawLines: false, drawWords: true);
                 }
                 else
                 {
-                    Console.WriteLine("Skipping JPEG output (no --save-images flag).");
+                    if (verbose)
+                        Console.WriteLine("Skipping JPEG output (no --save-images flag).");
                 }
             }
             catch (Exception ex)
