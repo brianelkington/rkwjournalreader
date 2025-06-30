@@ -37,12 +37,12 @@ namespace read_journal
         {
             // Parse flags
             bool saveImages = args.Any(a => a.Equals("--save-images", StringComparison.OrdinalIgnoreCase));
-            bool verbose = args.Any(a => a.Equals("--verbose", StringComparison.OrdinalIgnoreCase));
+            bool verbose    = args.Any(a => a.Equals("--verbose",      StringComparison.OrdinalIgnoreCase));
 
             // Determine input: folder or JSON
             string inputArg = args.FirstOrDefault(a => !a.StartsWith("--")) ?? DefaultFolder;
-            bool isJson = inputArg.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
-                          && File.Exists(inputArg);
+            bool isJson     = inputArg.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                              && File.Exists(inputArg);
 
             // Build list of images to process
             List<ImageEntry> entries;
@@ -94,7 +94,7 @@ namespace read_journal
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
                 .Build();
             string endpoint = cfg["AIServicesEndpoint"];
-            string key = cfg["AIServicesKey"];
+            string key      = cfg["AIServicesKey"];
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(key))
             {
                 Console.Error.WriteLine("Missing AIServicesEndpoint or AIServicesKey in appsettings.json");
@@ -108,48 +108,52 @@ namespace read_journal
             string aggPath = Path.Combine(outputBase, "aggregator.txt");
             using var aggregatorWriter = new StreamWriter(aggPath, append: false) { AutoFlush = true };
 
-            // Process entries
-            double captionSum = 0;
-            int captionCount = 0;
+            // Track total word confidence
+            double totalWordConfidence = 0;
+            int    totalWordCount      = 0;
             var overallSw = Stopwatch.StartNew();
 
+            // Process entries
             foreach (var entry in entries)
             {
                 ProcessImageFile(
-                    imagePath: entry.Path,
-                    split: entry.Split,
-                    client: client,
-                    outputBase: outputBase,
-                    saveImages: saveImages,
-                    verbose: verbose,
-                    captionSum: ref captionSum,
-                    captionCount: ref captionCount,
+                    imagePath:        entry.Path,
+                    split:            entry.Split,
+                    client:           client,
+                    outputBase:       outputBase,
+                    saveImages:       saveImages,
+                    verbose:          verbose,
+                    totalWordConf:    ref totalWordConfidence,
+                    totalWordCount:   ref totalWordCount,
                     aggregatorWriter: aggregatorWriter);
             }
 
             overallSw.Stop();
-            Console.WriteLine($"\nProcessed {captionCount} pages with captions. " +
-                              $"Avg confidence: {(captionCount > 0 ? captionSum / captionCount : 0):P2}");
+            Console.WriteLine($"\nProcessed {totalWordCount} words total.");
+            Console.WriteLine(
+                $"Overall average word confidence: {(totalWordCount > 0
+                    ? totalWordConfidence / totalWordCount
+                    : 0):P2}");
             Console.WriteLine($"Total time: {overallSw.Elapsed:c}");
         }
 
         static void ProcessImageFile(
-            string imagePath,
-            bool split,
+            string              imagePath,
+            bool                split,
             ImageAnalysisClient client,
-            string outputBase,
-            bool saveImages,
-            bool verbose,
-            ref double captionSum,
-            ref int captionCount,
-            StreamWriter aggregatorWriter)
+            string              outputBase,
+            bool                saveImages,
+            bool                verbose,
+            ref double          totalWordConf,
+            ref int             totalWordCount,
+            StreamWriter        aggregatorWriter)
         {
             using var full = LoadAndOrientImage(imagePath);
             string baseName = Path.GetFileNameWithoutExtension(imagePath);
 
             if (split)
             {
-                int W = full.Width, H = full.Height;
+                int W    = full.Width, H = full.Height;
                 int half = (W - BinderWidth) / 2;
                 var regions = new[]
                 {
@@ -168,8 +172,8 @@ namespace read_journal
                         baseName + reg.Suffix,
                         saveImages,
                         verbose,
-                        ref captionSum,
-                        ref captionCount,
+                        ref totalWordConf,
+                        ref totalWordCount,
                         aggregatorWriter);
                 }
             }
@@ -182,22 +186,22 @@ namespace read_journal
                     baseName,
                     saveImages,
                     verbose,
-                    ref captionSum,
-                    ref captionCount,
+                    ref totalWordConf,
+                    ref totalWordCount,
                     aggregatorWriter);
             }
         }
 
         static void ProcessRegion(
-            SKBitmap bmp,
+            SKBitmap            bmp,
             ImageAnalysisClient client,
-            string outputBase,
-            string pageName,
-            bool saveImages,
-            bool verbose,
-            ref double captionSum,
-            ref int captionCount,
-            StreamWriter aggregatorWriter)
+            string              outputBase,
+            string              pageName,
+            bool                saveImages,
+            bool                verbose,
+            ref double          totalWordConf,
+            ref int             totalWordCount,
+            StreamWriter        aggregatorWriter)
         {
             // Chain console + per-page log + aggregator
             var origOut = Console.Out;
@@ -205,21 +209,21 @@ namespace read_journal
             string logPath = Path.Combine(outputBase, pageName + ".out");
             using var logWriter = new StreamWriter(logPath, append: false) { AutoFlush = true };
             var consolePlusAgg = new TeeTextWriter(origOut, aggregatorWriter);
-            var allOut = new TeeTextWriter(consolePlusAgg, logWriter);
+            var allOut         = new TeeTextWriter(consolePlusAgg, logWriter);
             Console.SetOut(allOut);
-            var errorPlusAgg = new TeeTextWriter(origErr, aggregatorWriter);
-            var allErr = new TeeTextWriter(errorPlusAgg, logWriter);
+            var errorPlusAgg   = new TeeTextWriter(origErr, aggregatorWriter);
+            var allErr         = new TeeTextWriter(errorPlusAgg, logWriter);
             Console.SetError(allErr);
 
             var sw = Stopwatch.StartNew();
-            Console.WriteLine($"--- {pageName} ---");
+            Console.WriteLine($"---------- {pageName} ----------");
 
             try
             {
                 // Encode and analyze
                 using var imgData = SKImage.FromBitmap(bmp)
                                           .Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
-                using var ms = new MemoryStream(imgData.ToArray());
+                using var ms      = new MemoryStream(imgData.ToArray());
                 ImageAnalysisResult result = client.Analyze(BinaryData.FromStream(ms), VisionFeatures);
 
                 // Caption
@@ -227,8 +231,6 @@ namespace read_journal
                 {
                     if (verbose)
                         Console.WriteLine($"Caption: \"{result.Caption.Text}\" (Conf:{result.Caption.Confidence:P2})");
-                    captionSum += result.Caption.Confidence;
-                    captionCount++;
                 }
 
                 // Dense captions
@@ -238,36 +240,60 @@ namespace read_journal
                     foreach (var dc in result.DenseCaptions.Values)
                         Console.WriteLine($"  {dc.Text} (Conf:{dc.Confidence:P2})");
                 }
+                // OCR text & word confidences
+                double regionWordSum  = 0;
+                int    regionWordCount = 0;
 
-                // OCR text
                 if (result.Read != null)
                 {
                     Console.WriteLine("Recognized Text:");
                     foreach (var ln in result.Read.Blocks.SelectMany(b => b.Lines))
                         Console.WriteLine($"  {ln.Text}");
 
-                    if (verbose)
+                    // Collect word confidences
+                    var words = result.Read.Blocks
+                                   .SelectMany(b => b.Lines)
+                                   .SelectMany(l => l.Words)
+                                   .ToList();
+
+                    if (words.Any())
                     {
-                        Console.WriteLine("\nWord confidences:");
-                        foreach (var word in result.Read.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
-                            Console.WriteLine($"  {word.Text} (Conf:{word.Confidence:P2})");
+                        if (verbose)
+                            Console.WriteLine("\nWord confidences:");
+                        foreach (var word in words)
+                        {
+                            if (verbose)
+                                Console.WriteLine($"  {word.Text} (Conf:{word.Confidence:P2})");
+                            regionWordSum  += word.Confidence;
+                            regionWordCount++;
+                        }
+
+                        double regionAvg = regionWordSum / regionWordCount;
+                        Console.WriteLine($"\nAverage word confidence for {pageName}: {regionAvg:P2}\n");
+
+                        // Accumulate to overall
+                        totalWordConf  += regionWordSum;
+                        totalWordCount += regionWordCount;
                     }
+                    else
+                    {
+                        Console.WriteLine("No words detected.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No OCR results.");
                 }
 
                 // Optional image output
                 if (saveImages)
                 {
-                    // var linesOut = Path.Combine(outputBase, $"{pageName}_lines.jpg");
-                    // AnnotateAndSave(bmp, result.Read, linesOut, drawLines: true, drawWords: false);
-
                     var wordsOut = Path.Combine(outputBase, $"{pageName}_words.jpg");
-                    if (verbose)
-                        AnnotateAndSave(bmp, result.Read, wordsOut, drawLines: false, drawWords: true);
+                    AnnotateAndSave(bmp, result.Read, wordsOut, drawLines: false, drawWords: true, verbose);
                 }
-                else
+                else if (verbose)
                 {
-                    if (verbose)
-                        Console.WriteLine("Skipping JPEG output (no --save-images flag).");
+                    Console.WriteLine("Skipping JPEG output (no --save-images flag).");
                 }
             }
             catch (Exception ex)
@@ -277,7 +303,8 @@ namespace read_journal
             finally
             {
                 sw.Stop();
-                Console.WriteLine($"Done in {sw.Elapsed:c}\n");
+                if(verbose)
+                    Console.WriteLine($"Done in {sw.Elapsed:c}\n");
                 Console.SetOut(origOut);
                 Console.SetError(origErr);
             }
@@ -297,11 +324,12 @@ namespace read_journal
         }
 
         static void AnnotateAndSave(
-            SKBitmap src,
-            ReadResult readResult,
-            string outputPath,
-            bool drawLines,
-            bool drawWords)
+            SKBitmap    src,
+            ReadResult  readResult,
+            string      outputPath,
+            bool        drawLines,
+            bool        drawWords,
+            bool        verbose = false)
         {
             using var bmp = new SKBitmap(src.Info);
             using var canvas = new SKCanvas(bmp);
@@ -309,9 +337,9 @@ namespace read_journal
 
             using var paint = new SKPaint
             {
-                Color = SKColors.Cyan,
+                Color       = SKColors.Cyan,
                 StrokeWidth = 3,
-                Style = SKPaintStyle.Stroke,
+                Style       = SKPaintStyle.Stroke,
                 IsAntialias = true
             };
 
@@ -327,14 +355,16 @@ namespace read_journal
                 }
             }
 
-            if (drawWords && readResult != null)
+
+            if (drawWords && readResult != null && verbose)
             {
-                foreach (var wd in readResult.Blocks.SelectMany(b => b.Lines).SelectMany(l => l.Words))
+                foreach (var wd in readResult.Blocks
+                                         .SelectMany(b => b.Lines)
+                                         .SelectMany(l => l.Words))
                 {
                     var polygon = wd.BoundingPolygon
                                     .Select(p => new SKPoint(p.X, p.Y))
                                     .ToArray();
-
                     DrawPolygon(canvas, polygon, paint);
                 }
             }
@@ -342,7 +372,8 @@ namespace read_journal
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
             using var outStream = new SKFileWStream(outputPath);
             bmp.Encode(outStream, SKEncodedImageFormat.Jpeg, JpegQuality);
-            Console.WriteLine($"Saved {Path.GetFileName(outputPath)}");
+            if (verbose)
+                Console.WriteLine($"Saved {Path.GetFileName(outputPath)}");
         }
 
         static void DrawPolygon(SKCanvas canvas, SKPoint[] pts, SKPaint paint)
@@ -411,7 +442,7 @@ namespace read_journal
         private readonly TextWriter _primary, _secondary;
         public TeeTextWriter(TextWriter primary, TextWriter secondary)
         {
-            _primary = primary;
+            _primary   = primary;
             _secondary = secondary;
         }
         public override Encoding Encoding => _primary.Encoding;
