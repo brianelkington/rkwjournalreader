@@ -14,6 +14,12 @@ printf '[\n' > "$output_file"
 first=true
 # Find only *.jpg files in the specified folder (no recursion)
 while IFS= read -r img; do
+  # Compute the absolute path
+  linuxpath=$(realpath "$img")
+
+  # Convert to Windows‐style path, e.g. /c/Users/... → C:\Users\...
+  winpath=$(echo "$linuxpath" | sed -E 's|^/([A-Za-z])/(.*)|\1:\\\2|; s|/|\\|g')
+
   # Add comma between entries
   if $first; then
     first=false
@@ -21,8 +27,8 @@ while IFS= read -r img; do
     printf ',\n' >> "$output_file"
   fi
 
-  # Escape backslashes and quotes in the path
-  esc=$(printf '%s' "$img" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  # Escape backslashes and quotes for JSON
+  esc=$(printf '%s' "$winpath" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
   # Append JSON object
   printf '  {\n    "path": "%s",\n    "split": true\n  }' "$esc" >> "$output_file"
