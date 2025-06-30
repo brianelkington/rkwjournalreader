@@ -32,22 +32,22 @@ resource "azurerm_log_analytics_workspace" "rkw" {
 #   to = azurerm_log_analytics_workspace.rkw
 # }
 
-resource "azurerm_monitor_diagnostic_setting" "rkw" {
-  name                       = "diag-cog-to-law"
-  target_resource_id         = azurerm_cognitive_account.rkw.id
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.rkw.id
+# resource "azurerm_monitor_diagnostic_setting" "rkw" {
+#   name                       = "diag-cog-to-law"
+#   target_resource_id         = azurerm_cognitive_account.rkw.id
+#   log_analytics_workspace_id = azurerm_log_analytics_workspace.rkw.id
 
-  # enable all metrics categories
-  enabled_metric {
-    category = "AllMetrics"
-  }
+#   # enable all metrics categories
+#   enabled_metric {
+#     category = "AllMetrics"
+#   }
 
-  # enable the built-in log categories (Audit, Operational, etc)
-  # adjust categories as needed for your scenario
-  enabled_log {
-    category = "allLogs"
-  }
-  # enabled_log {
-  #   category = "AuditEvent"
-  # }
-}
+#   # enable the built-in log categories (Audit, Operational, etc)
+#   # adjust categories as needed for your scenario
+#   enabled_log {
+#     category = "allLogs"
+#   }
+#   # enabled_log {
+#   #   category = "AuditEvent"
+#   # }
+# }

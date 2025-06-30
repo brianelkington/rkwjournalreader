@@ -61,3 +61,8 @@ resource "azurerm_key_vault_secret" "endpoint" {
   key_vault_id = azurerm_key_vault.rkw.id
   tags         = local.tags
 }
+
+# import {
+#   id = "/subscriptions/ab98a90e-7153-476e-b323-ae4a15843e5f/resourceGroups/rg-rkwjournalreader/providers/Microsoft.KeyVault/vaults/kv-rkw"
+#   to = azurerm_key_vault.rkw
+# }
