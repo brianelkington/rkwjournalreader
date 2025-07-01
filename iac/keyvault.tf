@@ -22,6 +22,7 @@ resource "azurerm_key_vault" "rkw" {
       "List",
       "Delete",
       "Purge",
+      "Recover",
     ]
   }
 
@@ -35,31 +36,11 @@ resource "azurerm_key_vault" "rkw" {
       "List",
       "Delete",
       "Purge",
+      "Recover",
     ]
   }
 
   tags = local.tags
-}
-
-resource "azurerm_key_vault_secret" "api_key_1" {
-  name         = "API-KEY-1"
-  value        = azurerm_cognitive_account.rkw.primary_access_key
-  key_vault_id = azurerm_key_vault.rkw.id
-  tags         = local.tags
-}
-
-resource "azurerm_key_vault_secret" "api_key_2" {
-  name         = "API-KEY-2"
-  value        = azurerm_cognitive_account.rkw.secondary_access_key
-  key_vault_id = azurerm_key_vault.rkw.id
-  tags         = local.tags
-}
-
-resource "azurerm_key_vault_secret" "endpoint" {
-  name         = "ENDPOINT"
-  value        = azurerm_cognitive_account.rkw.endpoint
-  key_vault_id = azurerm_key_vault.rkw.id
-  tags         = local.tags
 }
 
 # import {
