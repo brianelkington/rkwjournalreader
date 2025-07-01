@@ -1,5 +1,5 @@
 resource "azurerm_resource_group" "rkw" {
-  name     = "rg-rkwjournalreader"
+  name     = "rg-rkwjournalreader-computervision"
   location = var.location
 
   tags     = merge(local.tags, { createdOn = formatdate("YYYY-MM-DD HH:mm:ss ZZZ", timestamp()) })
@@ -26,28 +26,3 @@ resource "azurerm_log_analytics_workspace" "rkw" {
 
   tags = local.tags
 }
-
-# import {
-#   id = "/subscriptions/${var.subscription_id}/resourceGroups/${azurerm_resource_group.rkw.name}/providers/Microsoft.OperationalInsights/workspaces/law-rkw"
-#   to = azurerm_log_analytics_workspace.rkw
-# }
-
-# resource "azurerm_monitor_diagnostic_setting" "rkw" {
-#   name                       = "diag-cog-to-law"
-#   target_resource_id         = azurerm_cognitive_account.rkw.id
-#   log_analytics_workspace_id = azurerm_log_analytics_workspace.rkw.id
-
-#   # enable all metrics categories
-#   enabled_metric {
-#     category = "AllMetrics"
-#   }
-
-#   # enable the built-in log categories (Audit, Operational, etc)
-#   # adjust categories as needed for your scenario
-#   enabled_log {
-#     category = "allLogs"
-#   }
-#   # enabled_log {
-#   #   category = "AuditEvent"
-#   # }
-# }

@@ -1,5 +1,5 @@
 resource "azurerm_storage_account" "rkw" {
-  name                     = "sarkwreader"
+  name                     = "sarkwreadercompvis"
   location                 = azurerm_resource_group.rkw.location
   resource_group_name      = azurerm_resource_group.rkw.name
   account_tier             = "Standard"

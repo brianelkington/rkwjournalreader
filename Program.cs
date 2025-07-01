@@ -11,7 +11,7 @@ using Azure.AI.Vision.ImageAnalysis;
 using Microsoft.Extensions.Configuration;
 using SkiaSharp;
 
-namespace read_journal
+namespace read_journal_computervision
 {
     // JSON input structure
     public class ImageEntry
